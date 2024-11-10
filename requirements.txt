@@ -1,0 +1,36 @@
+# For chatbot
+torch 
+torchvision 
+torchaudio
+openai
+SpeechRecognition
+librosa
+soundfile
+gTTs
+ffmpeg
+ffmpeg-python
+pydub
+PyAudio
+pyttsx3
+gradio
+ipykernel
+langchain-community
+transformers
+jupyter
+playwright
+accelerate>=0.26.0
+openai
+
+# For YOLO
+pandas 
+opencv-python
+ultralytics
+supervision
+pycocotools
+
+# For Models
+pandas
+vit_pytorch
+matplotlib
+tensorboard
+torch-tb-profiler
