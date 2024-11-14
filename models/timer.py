@@ -76,6 +76,14 @@ class Timer(ContextDecorator):
             pd.DataFrame(data, columns=['Name', 'Min', 'Max', 'Mean', 'Total']).to_csv(filename, index=False)
 
     @classmethod
+    def times(self):
+        time = {}
+        for phase, times in Timer.time_tracker.items():
+            time[phase] = 1000 * np.mean(times['times'])
+            
+        return time
+    
+    @classmethod
     def reset(self):
         """ Clears data from the current tracker.
         """
@@ -131,6 +139,12 @@ def test_nested():
 
     Timer.report()
 
+def test_times():
+    """ Creates concurrent times and prints the metrics.
+    """
+    
+    print(Timer.times())
+
 if __name__ == '__main__':
     """ A few tests to show usage and make sure of proper functionality. 
     """
@@ -138,3 +152,4 @@ if __name__ == '__main__':
     test_csv()
     test_reset()
     test_nested()
+    test_times()
