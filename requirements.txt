@@ -20,6 +20,7 @@ jupyter
 playwright
 accelerate>=0.26.0
 openai
+pypdf
 
 # For YOLO
 pandas 
@@ -34,3 +35,14 @@ vit_pytorch
 matplotlib
 tensorboard
 torch-tb-profiler
+
+# Snowflake
+streamlit
+
+# COCO
+tensorflow_datasets
+tensorflow
+fiftyone
+
+# Fraud
+keras
