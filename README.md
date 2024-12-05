@@ -10,4 +10,15 @@ python -m pip install -U pip
 pip install -r requirements.txt
 ```
 
+## Project Descriptions
+### [chatbot](chatbot)
+Web scraping and chatgpt are used for document understanding.
 
+### [models](models)
+Various model architectures are applied to MNIST, CIFAR10 and CIFAR100.
+
+### [tracking](tracking)
+YOLO is used with the Hungarian algorithm to track objects.
+
+### [yolo](yolo)
+YOLO fine tuning and SuperVision annotation.
