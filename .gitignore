@@ -175,3 +175,4 @@ tracking/out
 chatbot/Contract
 chatbot/PDFs
 chatbot/data
+fraud/data/*.csv
