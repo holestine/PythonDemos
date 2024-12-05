@@ -1,9 +1,4 @@
 # Description
-Uses YOLO and the Hungarian algorithm to track objects and produces annotated videos like 
+Uses YOLO and the Hungarian algorithm to track objects and produces annotated videos like the one below.
 
-
-[![this](img/frame.png)](https://youtu.be/e8OLSGrHxyA)
-
-
-# asdf
-[![this](img/frame.png)](https://www.youtube.com/embed/e8OLSGrHxyA)
+[![Annotated Video](img/frame.png)](https://www.youtube.com/embed/e8OLSGrHxyA)
