@@ -22,3 +22,9 @@ YOLO is used with the Hungarian algorithm to track objects.
 
 ### [yolo](yolo)
 YOLO fine tuning and SuperVision annotation.
+
+### [speech_recognition](speech_recognition)
+Udacity speech recognition project.
+
+### [word2vec](word2vec)
+Demonstration of word vectors.

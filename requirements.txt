@@ -46,3 +46,6 @@ fiftyone
 
 # Fraud
 keras
+
+# word2vec
+gensim
