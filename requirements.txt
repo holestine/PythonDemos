@@ -49,3 +49,6 @@ keras
 
 # word2vec
 gensim
+
+#speech recognition
+python_speech_features
