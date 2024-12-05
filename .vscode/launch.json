@@ -8,16 +8,24 @@
             "name": "Python Debugger: Current File",
             "type": "debugpy",
             "request": "launch",
-            "program": "${file}",
             "cwd": "${fileDirname}",
+            "program": "${file}",
             "console": "integratedTerminal"
         },
         {
             "name": "Python Debugger: Chatbot",
             "type": "debugpy",
             "request": "launch",
-            "program": "customizable_chatbot.py",
             "cwd": "${workspaceFolder}/chatbot",
+            "program": "customizable_chatbot.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python Debugger: Tracking",
+            "type": "debugpy",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/tracking",
+            "program": "main.py",
             "console": "integratedTerminal"
         }
     ]
