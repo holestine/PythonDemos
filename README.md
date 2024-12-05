@@ -1,5 +1,5 @@
 # Python Demos
-Storage area for educational and how-to material
+Collection of Python sample code mostly in the area of AI and Deep Learning.
 
 ## Prepare Environment
 ``` bash
@@ -28,3 +28,6 @@ Udacity speech recognition project.
 
 ### [word2vec](word2vec)
 Demonstration of word vectors.
+
+### [fraud](fraud)
+Example of regression model to detect credit card fraud.
