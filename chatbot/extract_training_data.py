@@ -54,19 +54,22 @@ class DataScraper():
 
         return data
 
-def write_data(data, data_file="data.txt", remove_old_data=True):
+def write_data(data, data_file="data/data.txt", remove_old_data=True):
+
+    data_dir = os.path.basename(data_file)
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
 
     if remove_old_data:
         open(data_file, 'w').close() # delete file contents
     
-
     # Join documents with delimiter 
-    data = f'\n\n{constants.data_delimiter}\n\n'.join(x for x in data)
+    data = f'{constants.data_delimiter}'.join(x for x in data)
 
     # Save the data
     with open(data_file, 'a', encoding="utf-8") as file:
         file.write(data)
-        file.write(f'\n\n{constants.data_delimiter}\n\n')
+        file.write(f'{constants.data_delimiter}')
 
 if __name__ == "__main__":
 

@@ -170,3 +170,8 @@ keys.py
 data.txt
 models/data
 models/logs
+tracking/videos
+tracking/out
+chatbot/Contract
+chatbot/PDFs
+chatbot/data

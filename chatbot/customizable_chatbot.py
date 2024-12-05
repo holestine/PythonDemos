@@ -62,13 +62,13 @@ class ChatBot:
 
 if __name__ == "__main__":
 
-    #prompt = CONTRACT_PROMPT
-    #data_file = "contract.txt"
-    #pdf_dir='Contract'
+    prompt = CONTRACT_PROMPT
+    data_file = "data/contract.txt"
+    pdf_dir='Contract'
 
-    prompt = SUMMARIZE_PROMPT
-    data_file = "pdf_data.txt"
-    pdf_dir = "PDFs"
+    #prompt = SUMMARIZE_PROMPT
+    #data_file = "data/pdf_data.txt"
+    #pdf_dir = "PDFs"
 
     ds = DataScraper()
     pdf_data = ds.extract_pdf_text(pdf_dir=pdf_dir)
