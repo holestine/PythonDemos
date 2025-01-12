@@ -4,6 +4,61 @@ import matplotlib.pyplot as plt
 from tracker import bb_tracker
 from video import video_editor
 from time import time
+import supervision as sv
+
+def id_to_color(id):
+    """
+    Function to convert an id to a unique color
+
+    Parameters
+    ----------
+    id : int
+        The ID
+    """
+    blue  = id*107 % 256
+    green = id*149 % 256
+    red   = id*227 % 256
+    return (red, green, blue)
+
+def drawPred(frame, type, id, conf, box, color=(255, 0, 0)):
+    '''
+    Draws a bounding box around the detected object 
+
+    Parameters
+    ----------
+    frame : array[width, height, color depth]
+        The name of the video
+    type : str
+        The object type
+    conf : float
+        A value between 0 and 1 indicating the confidence of the detection
+    box : array[4]
+        The bounding box
+    color : bool
+        The color of the bounding box
+    '''
+
+    left   = int(box[0])
+    top    = int(box[1])
+    right  = int(box[2])
+    bottom = int(box[3])
+
+    # Draw the bounding box
+    cv2.rectangle(frame, (left, top), (right, bottom), color, thickness=5)
+
+    # Create label with type and confidence
+    label = "{}({}): {:.2f}".format(type, id, conf)
+
+    # Display the label at the top of the bounding box
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    scale = 1
+    thickness = 3
+    color = (255,255,255)
+    labelSize, _ = cv2.getTextSize(label, font, scale, thickness)
+    top = max(top, labelSize[1])
+    cv2.putText(frame, label, (left, top), font, scale, color, thickness, cv2.LINE_AA)
+
+    return frame
 
 def main(video_path=None, create_video=True, realtime_display=False):
 
@@ -16,8 +71,8 @@ def main(video_path=None, create_video=True, realtime_display=False):
     YOLO_MODEL = 'yolo11n'
     model = YOLO('{}.pt'.format(YOLO_MODEL))
 
-    # Initialize the tracker
-    tracker = bb_tracker()
+    # Create dictionary for trackers
+    trackers = {}
 
     # Load the video and process it one frame at a time
     vidcap = cv2.VideoCapture(video_path)
@@ -41,26 +96,30 @@ def main(video_path=None, create_video=True, realtime_display=False):
 
         # Detect objects with YOLO
         yolo_result = model.predict(img, verbose=False)
-        
-        # Process the detections
-        tracker.process_yolo_result(yolo_result)
 
-        # Get all the matched bounding boxes and their properties needed for rendering
-        (boxes, confidences, classes, colors) = tracker.get_matches()
+        detections = sv.Detections.from_ultralytics(yolo_result[0])
+        detected_classes = set(detections.class_id)
+        for cls in detected_classes:
+            if cls not in trackers:
+                trackers[cls] = bb_tracker()
 
-        if create_video:
-            # Draw matches on the frame and add it to the video
-            for box, confidence, type, color in zip(boxes, confidences, classes, colors):
-                type = yolo_result[0].names[type]
-                img = tracker.drawPred(img, type, confidence, box, color)
-            video.add_frame(img)
+            # Process the detections and get all matches
+            trackers[cls].process_detections(detections[detections.class_id == cls], img.shape)
+            (ids, boxes, confidences) = trackers[cls].get_matches()
 
-        if realtime_display:
-            # Update the image with the freshly annotated image
-            imgplot.set_data(img)
-            plt.draw()
-            plt.pause(0.001)
+            if create_video:
+                # Draw matches on the frame and add it to the video
+                for id, box, confidence in zip(ids, boxes, confidences):
+                    type = yolo_result[0].names[cls]
+                    img = drawPred(img, type, id, confidence, box, id_to_color(id))
 
+            if realtime_display:
+                # Update the image with the freshly annotated image
+                imgplot.set_data(img)
+                plt.draw()
+                plt.pause(0.001)
+
+        video.add_frame(img)
         images_to_process, img = vidcap.read()
 
         # For Debug
@@ -79,5 +138,6 @@ def main(video_path=None, create_video=True, realtime_display=False):
 if __name__ == '__main__':
     # Get a random test image (dataset used is BDD100k)
     video_path = random.choice(os.listdir('videos/test/'))
+    #video_path = 'cd20d7e6-dc9d2d27.mov'
 
     main('videos/test/{}'.format(video_path))

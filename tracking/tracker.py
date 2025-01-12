@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 from scipy.optimize import linear_sum_assignment
 from math import sqrt, exp
+from filterpy.kalman import KalmanFilter
 
 def prevent_division_by_0(value, epsilon=0.01):
     """ Prevents division by 0 and anything else less than epsilon
@@ -18,12 +19,51 @@ def prevent_division_by_0(value, epsilon=0.01):
         return np.sign(value) * epsilon
     return value
 
+def convert_bbox_to_x(bbox):
+    """Takes a bounding box in the form [x1,y1,x2,y2] and returns x in the form
+       [x,y,s,r] where x,y is the centre of the box and s is the scale (i.e., area) 
+       and r is the aspect ratio.
+
+    Args:
+        bbox (array[4]): The bounding box
+
+    Returns:
+        array[4,1]: [x,y s, r]
+    """
+    w = bbox[2] - bbox[0]
+    h = bbox[3] - bbox[1]
+    x = bbox[0] + w/2.
+    y = bbox[1] + h/2.
+    s = w * h
+    r = w / float(h)
+    return np.array([x, y, s, r]).reshape((4, 1))
+
+def convert_x_to_bbox(x):
+    """ Takes a bounding box in the centre form [x,y,s,r] and returns it in the form
+        [x1,y1,x2,y2] where x1,y1 is the top left and x2,y2 is the bottom right
+
+    Args:
+        x (array[4]): [x,y,s,r]
+
+    Returns:
+        _type_: The bounding box
+    """
+    center_x     = x[0]
+    center_y     = x[1]
+    area         = x[2] # w * h
+    aspect_ratio = x[3] # w / h
+
+    w = np.sqrt(area * aspect_ratio)
+    h = area / w
+    return np.array([center_x-w/2., center_y-h/2., center_x+w/2., center_y+h/2.]).reshape((1,4))
+
+
 class trajectory:
 
-    # Shared class variable
+    # Class variable, incremented to provide a unique id for each trajectory
     current_id = 1
 
-    def __init__(self, box, confidence, type) -> None:
+    def __init__(self, box, confidence) -> None:
         """
         Initializes parameters for a new trajectory
 
@@ -37,38 +77,78 @@ class trajectory:
             A value that indicates the type of the detection (e.g., person, car ...)
         """
 
-        # Get a unique id and color
+        # Get a unique id
         self.id = trajectory.current_id
         trajectory.current_id = self.id + 1
-        self.color = self.id_to_color(self.id)
-
-        # Get the type
-        self.type = type
 
         # Initialize values for tracking 
-        self.boxes = [box]
+        self.time_since_update = 0
+        self.hit_streak = 0
+        self.history = [box]
         self.confidences = [confidence]
-        self.missed_detections = 0
-        self.consecutive_detections = 0
+        self.initialize_kalman_filter(box)
 
-    def id_to_color(self, id):
+    def initialize_kalman_filter(self, bbox):
         """
-        Function to convert an id to a unique color
-
-        Parameters
-        ----------
-        id : int
-            The ID
+        Initializes a Kalman filter for bounding box predictions.
         """
-        blue  = id*107 % 256
-        green = id*149 % 256
-        red   = id*227 % 256
-        return (red, green, blue)
 
-class yolo_detection:
+        # Define constant velocity model
+        self.kf = KalmanFilter(dim_x=7, dim_z=4) 
+        self.kf.F = np.array([[1,0,0,0,1,0,0],
+                              [0,1,0,0,0,1,0],
+                              [0,0,1,0,0,0,1],
+                              [0,0,0,1,0,0,0],  
+                              [0,0,0,0,1,0,0],
+                              [0,0,0,0,0,1,0],
+                              [0,0,0,0,0,0,1]])
+        
+        self.kf.H = np.array([[1,0,0,0,0,0,0],
+                              [0,1,0,0,0,0,0],
+                              [0,0,1,0,0,0,0],
+                              [0,0,0,1,0,0,0]])
 
-    def __init__(self, box, confidence, type) -> None:
-        """ This class is used like a struct to store values associated with individual detections
+        self.kf.R[2:,2:] *= 10.
+        self.kf.P[4:,4:] *= 1000. # Give high uncertainty to the unobservable initial velocities
+        self.kf.P        *= 10.
+        self.kf.Q[-1,-1] *= 0.01
+        self.kf.Q[4:,4:] *= 0.01
+
+        self.kf.x[:4] = convert_bbox_to_x(bbox)
+
+    def get_prediction(self):
+        """ Advances the state vector and returns the predicted bounding box estimate.
+
+        Returns:
+            array[4]: The bounding box prediction
+        """
+        
+        if((self.kf.x[6] + self.kf.x[2]) <= 0):
+            self.kf.x[6] *= 0.0
+        self.kf.predict()
+        if(self.time_since_update > 0):
+            self.hit_streak = 0
+
+        self.time_since_update += 1
+        self.history.append(convert_x_to_bbox(self.kf.x[0:4]).squeeze(0))
+        return self.history[-1]
+
+    def update(self, bbox, confidence):
+        """
+        Updates the state vector with observed bbox.
+        """
+
+        self.time_since_update = 0
+        self.hit_streak += 1
+        self.kf.update(convert_bbox_to_x(bbox))
+        self.confidences.append(confidence)
+
+class detection:
+    """ This class is used like a struct to store values associated with individual detections
+    """
+
+    def __init__(self, box, confidence) -> None:
+        """ Stores the values
 
         Args:
             box (array): The coordinates of the bounding box
@@ -78,8 +158,8 @@ class yolo_detection:
 
         self.box        = box
         self.confidence = confidence
-        self.type       = type
 
+# Constant indices for YOLO bounding boxes
 X_MIN_INDEX = 0
 Y_MIN_INDEX = 1
 X_MAX_INDEX = 2
@@ -100,25 +180,14 @@ class bb_tracker:
         
         self.trajectories = []
 
-    def process_yolo_result(self, yolo_result):
-        '''
-        Incorporates the results from YOLO into the current trajectories
-    
-        Parameters
-        ----------
-        yolo_result : object
-            The decoded results from the YOLO model
-        '''
-
+    def process_detections(self, detections, shape):
         # Get the bounding box locations and the associated classes and confidences
-        boxes_xyxy  = yolo_result[0].boxes.xyxy.cpu().numpy()
-        confidences = yolo_result[0].boxes.conf.cpu().numpy()
-        classes     = yolo_result[0].boxes.cls.cpu().numpy()
+        boxes_xyxy  = detections.xyxy
+        confidences = detections.confidence
 
         # Filter out low confidence boxes
         filtered_boxes_xyxy  = boxes_xyxy[confidences > bb_tracker.confThreshold]
         filtered_confidences = confidences[confidences > bb_tracker.confThreshold]
-        filtered_classes     = classes[confidences > bb_tracker.confThreshold].astype(int)
 
         # Perform Non Maximum Suppression to remove redundant boxes with low confidence
         indices = cv2.dnn.NMSBoxes(filtered_boxes_xyxy, filtered_confidences, bb_tracker.confThreshold, bb_tracker.nmsThreshold)
@@ -126,11 +195,11 @@ class bb_tracker:
         # Create list of valid detections
         detections = []
         for i in indices:
-            detection = yolo_detection(filtered_boxes_xyxy[i], filtered_confidences[i], filtered_classes[i])
-            detections.append(detection)
+            detections.append(detection(filtered_boxes_xyxy[i], filtered_confidences[i]))
 
         # Associate valid detections with the existing trajectories
-        self.associate(detections, yolo_result[0].orig_shape)
+        self.associate(detections, shape)
+
 
     def box_iou(self, box1, box2):
         '''
@@ -160,46 +229,6 @@ class bb_tracker:
         # Compute the IoU
         iou = inter_area/float(union_area)
         return iou
-
-    def drawPred(self, frame, type, conf, box, color=(255, 0, 0)):
-        '''
-        Draws a bounding box around the detected object 
-
-        Parameters
-        ----------
-        frame : array[width, height, color depth]
-            The name of the video
-        type : str
-            The object type
-        conf : float
-            A value between 0 and 1 indicating the confidence of the detection
-        box : array[4]
-            The bounding box
-        color : bool
-            The color of the bounding box
-        '''
-
-        left   = int(box[0])
-        top    = int(box[1])
-        right  = int(box[2])
-        bottom = int(box[3])
-
-        # Draw the bounding box
-        cv2.rectangle(frame, (left, top), (right, bottom), color, thickness=5)
-
-        # Create label with type and confidence
-        label = "{}: {:.2f}".format(type, conf)
-
-        # Display the label at the top of the bounding box
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        scale = 1
-        thickness = 3
-        color = (255,255,255)
-        labelSize, _ = cv2.getTextSize(label, font, scale, thickness)
-        top = max(top, labelSize[1])
-        cv2.putText(frame, label, (left, top), font, scale, color, thickness, cv2.LINE_AA)
-
-        return frame
     
     def associate(self, detections, shape):
         '''
@@ -209,28 +238,27 @@ class bb_tracker:
         ----------
         detections : list
             A list of the new detections
+        shape : tuple
+            The height and width of the image
         '''
 
         # Nothing to match so just create new trajectories
         if len(self.trajectories) == 0:
             for detection in detections:
-                t = trajectory(detection.box, detection.confidence, detection.type)
+                t = trajectory(detection.box, detection.confidence)
                 self.trajectories.append(t)
             return
 
-        # Get the last know location for each trajectory
-        old_boxes = [t.boxes[-1] for t in self.trajectories]
-                         
-        # Get the location of all the new detections
-        new_boxes = [detection.box for detection in detections]
+        # Get the predicted locations for each trajectory
+        predictions = [t.get_prediction() for t in self.trajectories]
 
-        # Define an IOU Matrix with dimensions old_boxes x new_boxes
-        iou_matrix = np.zeros((len(old_boxes), len(new_boxes)), dtype=np.float32)
+        # Initialize appropriately dimensioned IOU Matrix
+        iou_matrix = np.zeros((len(predictions), len(detections)), dtype=np.float32)
 
         # Go through all the boxes and store each IOU value
-        for i, old_box in enumerate(old_boxes):
-            for j, new_box in enumerate(new_boxes):
-                iou_matrix[i][j] = self.hungarian_cost(old_box, new_box, shape)
+        for i, prediction in enumerate(predictions):
+            for j, detection in enumerate([d.box for d in detections]):
+                iou_matrix[i][j] = self.hungarian_cost(prediction, detection, shape)
 
         # Call the Hungarian Algorithm
         hungarian_row, hungarian_col = linear_sum_assignment(-iou_matrix)
@@ -238,54 +266,45 @@ class bb_tracker:
 
         # Go through the matches in the Hungarian Matrix 
         for h in hungarian_matrix:
-            # If it's under the IOU threshold increment the missed detections in the tracker and add a new trajectory
-            if iou_matrix[h[0],h[1]] < bb_tracker.iou_threshold or self.trajectories[h[0]].type != detections[h[1]].type:
-                self.trajectories[h[0]].missed_detections += 1
+            # If it's under the IOU threshold add a new trajectory
+            if iou_matrix[h[0],h[1]] < bb_tracker.iou_threshold:
                 detection = detections[h[1]]
-                t = trajectory(detection.box, detection.confidence, detection.type)
+                t = trajectory(detection.box, detection.confidence)
                 self.trajectories.append(t)
-            # Else, it's a match, add the box to the trajectory
             else:
-                self.trajectories[h[0]].boxes.append(detections[h[1]].box)
-                self.trajectories[h[0]].consecutive_detections = max(1, self.trajectories[h[0]].consecutive_detections+1)
-                self.trajectories[h[0]].missed_detections = 0
-                self.trajectories[h[0]].confidences.append(detections[h[1]].confidence)
+                # It's a match, update the trajectory
+                self.trajectories[h[0]].update(detections[h[1]].box, detections[h[1]].confidence)
                
         # Add new trajectories for unmatched detections
-        new_boxes = [detection.box for detection in detections]
         for d, det in enumerate(detections):
             if(d not in hungarian_matrix[:,1]):
-                t = trajectory(det.box, det.confidence, det.type)
+                t = trajectory(det.box, det.confidence)
                 self.trajectories.append(t)
         
         # Keep track of missed and consecutive detections, remove trajectories that have not been matched for a while
         for t in self.trajectories:
-            if len(new_boxes) == 0 or not np.any(np.all(t.boxes[-1] == new_boxes, axis=1)):
-                if t.missed_detections >= bb_tracker.max_missed_detections:
-                    self.trajectories.remove(t)
-                else:
-                    t.missed_detections += 1
-                    t.consecutive_detections = 0
+            if t.time_since_update >= bb_tracker.max_missed_detections:
+                self.trajectories.remove(t)
 
     def get_matches(self, min_consecutive_detections=min_consecutive_detections):
         """ Returns bounding box information for trajectories with consecutive detections
 
         Args:
-            min_consecutive_detections (int, optional): The minimum number of consecutive detections to be considered a match. Defaults to min_consecutive_detections.
+            min_consecutive_detections (int, optional): The minimum number of consecutive detections to be considered a match. 
+                                                        Defaults to min_consecutive_detections.
 
         Returns:
-            tuple: The bounding boxes, their colors, the confidences and classes for matched detections
+            tuple: The id, bounding boxes and confidences for matched detections
         """
 
-        boxes, confidences, classes, colors = [], [], [], []
+        ids, boxes, confidences = [], [], []
         for t in self.trajectories:
-            if t.consecutive_detections >= min_consecutive_detections:
-                boxes.append(t.boxes[-1])
+            if t.hit_streak >= min_consecutive_detections:
+                boxes.append(t.history[-1])
                 confidences.append(t.confidences[-1])
-                classes.append(t.type)
-                colors.append(t.color)
+                ids.append(t.id)
 
-        return (boxes, confidences, classes, colors)
+        return (ids, boxes, confidences)
 
     def print_matches(self):
         """ Prints all the matches detected in the last update. They can be identified by trajectories that have multiple bounding boxes and zero missed detections.
@@ -293,10 +312,10 @@ class bb_tracker:
 
         print("Matched Detections:")
         for t in self.trajectories:
-            if len(t.boxes) > 1:
-                if t.missed_detections == 0:
-                    print(t.boxes[-2])
-                    print(t.boxes[-1])
+            if len(t.history) > 1:
+                if t.time_since_update == 0:
+                    print(t.history[-2])
+                    print(t.history[-1])
                     print('\n')
 
     def print_unmatched_trackers(self):
@@ -305,8 +324,8 @@ class bb_tracker:
 
         print("Unmatched Trackers:")
         for t in self.trajectories:
-            if t.missed_detections > 0:
-                print(t.boxes[-1])
+            if t.time_since_update > 0:
+                print(t.history[-1])
 
     def print_unmatched_detections(self):
         """ Prints all the unmatched detections from the last update. They can be identified by trajectories that only one bounding boxes and zero missed detections.
@@ -314,40 +333,40 @@ class bb_tracker:
         
         print("Unmatched Detections:")
         for t in self.trajectories:
-            if len(t.boxes) == 1:
-                if t.missed_detections == 0:
-                    print(t.boxes[-1])
+            if len(t.history) == 1:
+                if t.time_since_update == 0:
+                    print(t.history[-1])
 
-    def hungarian_cost(self, old_box, new_box, shape, linear_thresh = 10000, exp_thresh = 0.5):
+    def hungarian_cost(self, prediction, detection, shape, linear_thresh = 10000, exp_thresh = 0.5):
 
         # IOU COST
-        iou_cost = self.box_iou(old_box, new_box)
+        iou_cost = self.box_iou(prediction, detection)
         if (iou_cost < bb_tracker.iou_threshold):
             return 0
         
-        ### Sanchez-Matilla et al COST
+        # Sanchez-Matilla et al COST (section 3.1.3 in https://arxiv.org/pdf/1709.03572)
         Q_dist = sqrt(pow(shape[0], 2) + pow(shape[1], 2))
         Q_shape = shape[0] * shape[1]
-        distance_term = Q_dist/prevent_division_by_0(sqrt(pow(old_box[X_MIN_INDEX] - new_box[X_MIN_INDEX], 2)
-                                                          + pow(old_box[Y_MIN_INDEX] - new_box[Y_MIN_INDEX],2)))
+        distance_term = Q_dist/prevent_division_by_0(sqrt(pow(prediction[X_MIN_INDEX] - detection[X_MIN_INDEX], 2)
+                                                        + pow(prediction[Y_MIN_INDEX] - detection[Y_MIN_INDEX],2)))
         
-        shape_term = Q_shape/prevent_division_by_0(sqrt(pow(old_box[X_MAX_INDEX] - new_box[X_MAX_INDEX], 2)
-                                                        + pow(old_box[Y_MAX_INDEX] - new_box[Y_MAX_INDEX],2)))
+        shape_term = Q_shape/prevent_division_by_0(sqrt(pow(prediction[X_MAX_INDEX] - detection[X_MAX_INDEX], 2)
+                                                      + pow(prediction[Y_MAX_INDEX] - detection[Y_MAX_INDEX],2)))
         
         linear_cost = distance_term * shape_term
         if (linear_cost < linear_thresh):
             return 0
 
-        ## YUL et al COST
+        # YU et al COST (section 3.1.3 in https://arxiv.org/pdf/1709.03572)
         w1 = 0.5
         w2 = 1.5
-        a = (old_box[X_MIN_INDEX] - new_box[X_MIN_INDEX]) / prevent_division_by_0(old_box[X_MAX_INDEX])
+        a = (prediction[X_MIN_INDEX] - detection[X_MIN_INDEX]) / prevent_division_by_0(prediction[X_MAX_INDEX])
         a_2 = pow(a,2)
-        b = (old_box[Y_MIN_INDEX] - new_box[Y_MIN_INDEX])/prevent_division_by_0(old_box[3])
+        b = (prediction[Y_MIN_INDEX] - detection[Y_MIN_INDEX]) / prevent_division_by_0(prediction[3])
         b_2 = pow(b,2)
         ab = -1 * (a_2 + b_2) * w1
-        c = abs(old_box[Y_MAX_INDEX] - new_box[Y_MAX_INDEX])/(old_box[Y_MAX_INDEX] + new_box[Y_MAX_INDEX])
-        d = abs(old_box[X_MAX_INDEX] - new_box[X_MAX_INDEX])/(old_box[X_MAX_INDEX] + new_box[X_MAX_INDEX])
+        c = abs(prediction[Y_MAX_INDEX] - detection[Y_MAX_INDEX])/(prediction[Y_MAX_INDEX] + detection[Y_MAX_INDEX])
+        d = abs(prediction[X_MAX_INDEX] - detection[X_MAX_INDEX])/(prediction[X_MAX_INDEX] + detection[X_MAX_INDEX])
         cd = -1 * (c + d) * w2
         exponential_cost = exp(ab) * exp(cd)
 
@@ -355,4 +374,3 @@ class bb_tracker:
             return 0
         
         return iou_cost
-        
