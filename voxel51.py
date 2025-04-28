@@ -5,8 +5,8 @@ dataset = foz.load_zoo_dataset(
     "coco-2017",
     split="validation",
     label_types=["detections"],
-    classes=["person", "sports ball"],
-    max_samples=200,
+    classes=["bird", "cat"],
+    max_samples=20,
     overwrite=True
 )
 

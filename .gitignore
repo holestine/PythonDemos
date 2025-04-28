@@ -164,7 +164,7 @@ cython_debug/
 # Project specific files
 datasets
 runs
-object_v11.yaml
+object_v12.yaml
 *.pt
 keys.py
 data.txt
