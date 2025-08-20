@@ -46,10 +46,12 @@ class ChatBot:
         else:
             self.messages = []
 
-    def get_response(self, prompt, model="chatgpt-4o-latest", temperature=0):
+    def get_response(self, prompt, model="gpt-5", temperature=1):
         '''
         Get a response based on the current history
         '''
+
+        # chatgpt-4o-latest gives quicker responses
 
         self.messages.append({'role':'user', 'content':f"{prompt}"})
 
