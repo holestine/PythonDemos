@@ -5,6 +5,8 @@ from tracker import bb_tracker
 from video import video_editor
 from time import time
 import supervision as sv
+import argparse
+import yaml
 
 def id_to_color(id):
     """
@@ -60,15 +62,49 @@ def drawPred(frame, type, id, conf, box, color=(255, 0, 0)):
 
     return frame
 
-def main(video_path=None, create_video=True, realtime_display=False):
+def get_config(config_file=None):
+    """ Merges YAML config with command line arguments
 
-    # Validate input
-    if video_path == None:
-        print('Please specify a video')
-        return
+    Returns:
+        object: the configuration
+    """
+
+    if config_file is None:
+        # Parse command line arguments
+        parser = argparse.ArgumentParser(description='Parser for SORT Tracking')
+        parser.add_argument('-c', '--config',   default='config.yaml', help='Path to YAML config file')
+
+        args = parser.parse_args()
+
+        config_file = args.config
+
+        # Open config file
+        with open(config_file, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+
+        # Update config with command line arguments
+        for key, value in vars(args).items():
+            if value is not None:
+                config[key] = value
+    else:
+        # Open config file
+        with open(config_file, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+
+    return config
+
+def main(config, create_video=True, realtime_display=False):
+
+    if config['video'] == 'RANDOM':
+        # Get a random test image (dataset used is BDD100k)
+        video_file = random.choice(os.listdir(config['video_dir']))
+    else:
+        video_file = config['video'] #'cd20d7e6-dc9d2d27.mov'
+
+    video_path = f'videos/test/{video_file}'
 
     # Initialize YOLO model
-    YOLO_MODEL = 'yolo11n'
+    YOLO_MODEL = 'yolo12n'
     model = YOLO('{}.pt'.format(YOLO_MODEL))
 
     # Create dictionary for trackers
@@ -79,7 +115,7 @@ def main(video_path=None, create_video=True, realtime_display=False):
     images_to_process, img = vidcap.read()
 
     if create_video:
-        video = video_editor('out', 'video.mp4', width=int(img.shape[1]/4), height=int(img.shape[0]/4))
+        video = video_editor('out', video_file, width=int(img.shape[1]/4), height=int(img.shape[0]/4))
 
     if realtime_display:
         # Display the first image
@@ -92,6 +128,8 @@ def main(video_path=None, create_video=True, realtime_display=False):
     
     while images_to_process:
 
+        #img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
         num_frames+=1
 
         # Detect objects with YOLO
@@ -101,7 +139,7 @@ def main(video_path=None, create_video=True, realtime_display=False):
         detected_classes = set(detections.class_id)
         for cls in detected_classes:
             if cls not in trackers:
-                trackers[cls] = bb_tracker()
+                trackers[cls] = bb_tracker(config)
 
             # Process the detections and get all matches
             trackers[cls].process_detections(detections[detections.class_id == cls], img.shape)
@@ -136,8 +174,6 @@ def main(video_path=None, create_video=True, realtime_display=False):
     print(f'FPS: {average_fps:.2f}')
 
 if __name__ == '__main__':
-    # Get a random test image (dataset used is BDD100k)
-    video_path = random.choice(os.listdir('videos/test/'))
-    #video_path = 'cd20d7e6-dc9d2d27.mov'
-
-    main('videos/test/{}'.format(video_path))
+    config = get_config()
+    main(config['TRACKER'], config['DEBUG']['create_video'], config['DEBUG']['realtime_display'])
+    

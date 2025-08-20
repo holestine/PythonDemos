@@ -1,0 +1,15 @@
+# Debug switches
+DEBUG:
+  realtime_display: False
+  create_video: True
+
+# Values used by the SORT tracker
+TRACKER:
+  confThreshold: 0.5             # The minimum confidence threshold for detections
+  nms_threshold: 0.4             # NMS threshold
+  iou_threshold: 0.3             # Minimum amount of overlap needed to associate detections
+  max_missed_detections: 20      # The number of frames to keep an unseen object in memory
+  min_consecutive_detections: 1  # The number of consecutive detections needed to consider to object tracked
+  buffer: 20                     # The buffer to add to bounding boxes before IoU test
+  video_dir: videos/test/        # Directory containing test videos
+  video: RANDOM                  # Specific video in video_dir or 'RANDOM'
