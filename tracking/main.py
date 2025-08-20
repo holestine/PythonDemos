@@ -175,5 +175,4 @@ def main(config, create_video=True, realtime_display=False):
 
 if __name__ == '__main__':
     config = get_config()
-    main(config['TRACKER'], config['DEBUG']['create_video'], config['DEBUG']['realtime_display'])
-    
+    main(config['TRACKER'], create_video=config['DEBUG']['create_video'], realtime_display=config['DEBUG']['realtime_display'])
