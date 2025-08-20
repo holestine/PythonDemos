@@ -374,10 +374,10 @@ class bb_tracker:
         Q_dist = sqrt(pow(shape[0], 2) + pow(shape[1], 2))
         Q_shape = shape[0] * shape[1]
         distance_term = Q_dist/prevent_division_by_0(sqrt(pow(prediction[X_MIN_INDEX] - detection[X_MIN_INDEX], 2)
-                                                        + pow(prediction[Y_MIN_INDEX] - detection[Y_MIN_INDEX],2)))
+                                                        + pow(prediction[Y_MIN_INDEX] - detection[Y_MIN_INDEX], 2)))
         
         shape_term = Q_shape/prevent_division_by_0(sqrt(pow(prediction[X_MAX_INDEX] - detection[X_MAX_INDEX], 2)
-                                                      + pow(prediction[Y_MAX_INDEX] - detection[Y_MAX_INDEX],2)))
+                                                      + pow(prediction[Y_MAX_INDEX] - detection[Y_MAX_INDEX], 2)))
         
         linear_cost = distance_term * shape_term
         if (linear_cost < linear_thresh):
@@ -389,7 +389,7 @@ class bb_tracker:
             w2 = 1.5
             a = (prediction[X_MIN_INDEX] - detection[X_MIN_INDEX]) / prevent_division_by_0(prediction[X_MAX_INDEX])
             a_2 = pow(a,2)
-            b = (prediction[Y_MIN_INDEX] - detection[Y_MIN_INDEX]) / prevent_division_by_0(prediction[3])
+            b = (prediction[Y_MIN_INDEX] - detection[Y_MIN_INDEX]) / prevent_division_by_0(prediction[Y_MAX_INDEX])
             b_2 = pow(b,2)
             ab = -1 * (a_2 + b_2) * w1
             c = abs(prediction[Y_MAX_INDEX] - detection[Y_MAX_INDEX])/(prediction[Y_MAX_INDEX] + detection[Y_MAX_INDEX])
