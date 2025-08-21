@@ -1,12 +1,11 @@
+import yaml
 import cv2, os, random
 from ultralytics import YOLO
-import matplotlib.pyplot as plt
 from tracker import bb_tracker
 from video import video_editor
 from time import time
-import supervision as sv
 import argparse
-import yaml
+import supervision as sv
 
 def id_to_color(id):
     """
@@ -96,16 +95,16 @@ def get_config(config_file=None):
 def main(config, create_video=True, realtime_display=False):
 
     if config['video'] == 'RANDOM':
-        # Get a random test image (dataset used is BDD100k)
+        # Get a random test image
         video_file = random.choice(os.listdir(config['video_dir']))
     else:
-        video_file = config['video'] #'cd20d7e6-dc9d2d27.mov'
+        video_file = config['video']
 
-    video_path = f'videos/test/{video_file}'
+    video_path = os.path.join(config['video_dir'], video_file)
 
     # Initialize YOLO model
     YOLO_MODEL = 'yolo12n'
-    model = YOLO('{}.pt'.format(YOLO_MODEL))
+    model = YOLO(f'{YOLO_MODEL}.pt')
 
     # Create dictionary for trackers
     trackers = {}
@@ -115,22 +114,19 @@ def main(config, create_video=True, realtime_display=False):
     images_to_process, img = vidcap.read()
 
     if create_video:
-        video = video_editor('out', video_file, width=int(img.shape[1]/4), height=int(img.shape[0]/4))
-
-    if realtime_display:
-        # Display the first image
-        fig, ax = plt.subplots()
-        imgplot = ax.imshow(img)
-        plt.show(block=False)
+        scale = 1
+        out_video = os.path.splitext(video_file)[0] + '.mp4'
+        video = video_editor('out', out_video, width=int(img.shape[1]/scale), height=int(img.shape[0]/scale))
 
     num_frames = 0
     start = time()
     
     while images_to_process:
 
-        #img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
         num_frames+=1
+
+        #img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        #img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         # Detect objects with YOLO
         yolo_result = model.predict(img, verbose=False)
@@ -151,13 +147,14 @@ def main(config, create_video=True, realtime_display=False):
                     type = yolo_result[0].names[cls]
                     img = drawPred(img, type, id, confidence, box, id_to_color(id))
 
-            if realtime_display:
-                # Update the image with the freshly annotated image
-                imgplot.set_data(img)
-                plt.draw()
-                plt.pause(0.001)
+        if realtime_display:
+            # Update the image with the freshly annotated image
+            cv2.imshow(video_file, img)
+            cv2.waitKey(1)
 
-        video.add_frame(img)
+        if create_video:
+            video.add_frame(img)
+
         images_to_process, img = vidcap.read()
 
         # For Debug
