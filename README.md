@@ -5,8 +5,8 @@ Collection of Python sample code mostly in the area of AI and Deep Learning.
 ``` bash
 conda create --name demo python=3.12 -y
 conda activate demo
-conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia -y
 python -m pip install -U pip
+conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia -y
 pip install -r requirements.txt
 ```
 

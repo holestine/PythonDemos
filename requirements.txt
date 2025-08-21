@@ -24,7 +24,7 @@ pypdf
 
 # For YOLO
 pandas 
-opencv-python
+opencv-python==4.10.0.84
 ultralytics
 supervision
 pycocotools
@@ -37,7 +37,7 @@ tensorboard
 torch-tb-profiler
 
 # Snowflake
-streamlit
+#streamlit
 
 # COCO
 tensorflow_datasets
@@ -46,9 +46,14 @@ fiftyone
 
 # Fraud
 keras
+seaborn
 
 # word2vec
+scipy==1.12
 gensim
 
-#speech recognition
+# speech recognition
 python_speech_features
+
+# Tracking
+filterpy
