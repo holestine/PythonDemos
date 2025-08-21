@@ -7,7 +7,7 @@ from extract_training_data import DataScraper, write_data
 FRAUD_PROMPT = {
     'system': "You are to act as a financial fraud detection expert. Use the following data for additional context \
 to help answer questions. Ask for more information if needed. If you don't know the answer, say that you don't know. \
-Keep answers concise using a maximum of three sentences including a conclusion.",
+Keep answers concise using a maximum of three sentences.",
     'human': "What are the best ways to detect financial fraud?"
 }
 
@@ -46,12 +46,19 @@ class ChatBot:
         else:
             self.messages = []
 
-    def get_response(self, prompt, model="gpt-5", temperature=1):
-        '''
-        Get a response based on the current history
-        '''
+    def get_response(self, prompt, model="chatgpt-4o-latest", temperature=0):
+        """ Get a response based on the current conversation history
 
-        # chatgpt-4o-latest gives quicker responses
+        Args:
+            prompt (string): The human query.
+            model (str, optional): The OpenAI model to use (gpt-5 etc.). Defaults to "chatgpt-4o-latest".
+            temperature (int, optional): Amount of randomness in answer. Defaults to 0.
+
+        Returns:
+            object: The response.
+        """
+
+        #  gives quicker responses
 
         self.messages.append({'role':'user', 'content':f"{prompt}"})
 
