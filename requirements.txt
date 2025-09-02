@@ -55,5 +55,8 @@ gensim
 # speech recognition
 python_speech_features
 
+# SSL
+lightly
+
 # Tracking
 filterpy

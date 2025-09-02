@@ -176,3 +176,5 @@ chatbot/Contract
 chatbot/PDFs
 chatbot/data
 fraud/data/*.csv
+SSL/images_*
+SSL/*.zip
