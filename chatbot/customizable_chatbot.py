@@ -1,5 +1,5 @@
 from openai import OpenAI
-from keys import openai_key
+from keys import openai_key # you'll need create the file keys.py and put "openai_key = 'your key'" inside
 from extract_training_data import DataScraper, write_data
 
 # Prompt Pairs
@@ -66,7 +66,7 @@ class ChatBot:
         response = response.choices[0].message.content
 
         self.messages.append({'role':'assistant', 'content':f"{response}"})
-        
+
         return response
 
 if __name__ == "__main__":

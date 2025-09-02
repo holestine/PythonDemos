@@ -2,11 +2,12 @@ from langchain_community.document_transformers import BeautifulSoupTransformer
 from langchain_community.document_loaders      import AsyncChromiumLoader
 from pypdf                                     import PdfReader
 
-import constants
-
 # Suppresses warning
 import os
 os.environ['USER_AGENT'] = 'custom_agent'
+
+# Used to visually identify different chunks of data
+data_delimiter = "\n\n#####\n\n"
 
 # Modify these to include sites with relevant data
 URLS = [
@@ -64,12 +65,12 @@ def write_data(data, data_file="data/data.txt", remove_old_data=True):
         open(data_file, 'w').close() # delete file contents
     
     # Join documents with delimiter 
-    data = f'{constants.data_delimiter}'.join(x for x in data)
+    data = f'{data_delimiter}'.join(x for x in data)
 
     # Save the data
     with open(data_file, 'a', encoding="utf-8") as file:
         file.write(data)
-        file.write(f'{constants.data_delimiter}')
+        file.write(f'{data_delimiter}')
 
 if __name__ == "__main__":
 
