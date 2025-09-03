@@ -21,42 +21,38 @@ def prevent_division_by_0(value, epsilon=0.01):
     return value
 
 def convert_bbox_to_x(bbox):
-    """Takes a bounding box in the form [x1,y1,x2,y2] and returns x in the form
-       [x,y,s,r] where x,y is the centre of the box and s is the scale (i.e., area) 
-       and r is the aspect ratio.
+    """ Takes a bounding box in the form [x1,y1,x2,y2] and returns a vector
+        in the form [x_center, y_center, area, aspect_ratio].
 
     Args:
         bbox (array[4]): The bounding box
 
     Returns:
-        array[4,1]: [x,y s, r]
+        array[4,1]: [x_center, y_center, area, aspect_ratio]
     """
-    w = bbox[2] - bbox[0]
-    h = bbox[3] - bbox[1]
-    x = bbox[0] + w/2.
-    y = bbox[1] + h/2.
-    s = w * h
-    r = w / float(h)
-    return np.array([x, y, s, r]).reshape((4, 1))
+
+    width = bbox[2] - bbox[0]
+    height = bbox[3] - bbox[1]
+    x_center = bbox[0] + width/2.
+    y_center = bbox[1] + height/2.
+    return np.array([x_center, y_center, width, height]).reshape((4, 1))
 
 def convert_x_to_bbox(x):
-    """ Takes a bounding box in the centre form [x,y,s,r] and returns it in the form
-        [x1,y1,x2,y2] where x1,y1 is the top left and x2,y2 is the bottom right
+    """ Takes a bounding box in the centre form [x_center,y_center,area,aspect_ratio] and returns
+    it in the form [x1,y1,x2,y2] where (x1,y1) is the top left and (x2,y2) is the bottom right
 
     Args:
-        x (array[4]): [x,y,s,r]
+        x (array[4]): [x_center,y_center,area,aspect_ratio]
 
     Returns:
-        _type_: The bounding box
+        np.array: The bounding box
     """
-    center_x     = x[0]
-    center_y     = x[1]
-    area         = x[2] # w * h
-    aspect_ratio = x[3] # w / h
+    center_x = x[0]
+    center_y = x[1]
+    width    = x[2]
+    height   = x[3]
 
-    w = np.sqrt(area * aspect_ratio)
-    h = area / w
-    return np.array([center_x-w/2., center_y-h/2., center_x+w/2., center_y+h/2.]).reshape((1,4))
+    return np.array([center_x-width/2., center_y-height/2., center_x+width/2., center_y+height/2.]).reshape((1,4))
 
 
 class trajectory:
@@ -91,32 +87,25 @@ class trajectory:
         self.initialize_kalman_filter(box)
 
     def initialize_kalman_filter(self, bbox):
-        """
-        Initializes a Kalman filter for bounding box predictions.
-        """
+        """ Initializes a Kalman filter for bounding box predictions. """
 
         # Define constant velocity model
-        self.kf = KalmanFilter(dim_x=7, dim_z=4)
-        self.kf.F = np.array([[1,0,0,0,1,0,0],
-                              [0,1,0,0,0,1,0],
-                              [0,0,1,0,0,0,1],
-                              [0,0,0,1,0,0,0],  
-                              [0,0,0,0,1,0,0],
-                              [0,0,0,0,0,1,0],
-                              [0,0,0,0,0,0,1]])
-        
-        self.kf.H = np.array([[1,0,0,0,0,0,0],
-                              [0,1,0,0,0,0,0],
-                              [0,0,1,0,0,0,0],
-                              [0,0,0,1,0,0,0]])
+        dim_x = 8 # Tracking x_center, y_center, area, aspect_ratio and their derivatives
+        dim_z = 4 # Predicting x_center, y_center, area and aspect_ratio
+        self.kf = KalmanFilter(dim_x=dim_x, dim_z=dim_z)
 
-        self.kf.R[2:,2:] *= 10.
-        self.kf.P[4:,4:] *= 1000. # Give high uncertainty to the unobservable initial velocities
-        self.kf.P        *= 10.
-        self.kf.Q[-1,-1] *= 0.01
-        self.kf.Q[4:,4:] *= 0.01
+        # Set the detected initial positions
+        self.kf.x[:4] = convert_bbox_to_x(bbox) 
 
-        self.kf.x[:4] = convert_bbox_to_x(bbox)
+        # Transition Matrix
+        self.kf.F                 = np.eye(dim_x)
+        self.kf.F[0:dim_z,dim_z:] = np.eye(dim_z) # use velocities to predict next position
+
+        # Measurement Function: maps state to predicted position
+        self.kf.H = np.eye(dim_x)[0:dim_z]
+
+        # Give high uncertainty to the initial velocities
+        self.kf.P[dim_z:,dim_z:] = 100 * np.eye(dim_z)
 
     def get_prediction(self):
         """ Advances the state vector and returns the predicted bounding box estimate.
@@ -125,8 +114,6 @@ class trajectory:
             array[4]: The bounding box prediction
         """
 
-        if((self.kf.x[6] + self.kf.x[2]) <= 0):
-            self.kf.x[6] *= 0.0
         self.kf.predict()
 
         if(self.time_since_update > 0):
@@ -314,6 +301,12 @@ class bb_tracker:
                 ids.append(t.id)
                 boxes.append(t.history[-1])
                 confidences.append(t.confidences[-1])
+            # TODO:  Find a way to return high confidence things that have lost tracking for a couple frames
+            #elif len(t.history) > 5:
+            #    ids.append(t.id)
+            #    boxes.append(t.history[-1])
+            #    confidences.append(t.confidences[-1])
+            #    print(t.id)
 
         return (ids, boxes, confidences)
 
