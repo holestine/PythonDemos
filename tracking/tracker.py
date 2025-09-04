@@ -20,41 +20,6 @@ def prevent_division_by_0(value, epsilon=0.01):
         return np.sign(value) * epsilon
     return value
 
-def convert_bbox_to_x(bbox):
-    """ Takes a bounding box in the form [x1,y1,x2,y2] and returns a vector
-        in the form [x_center, y_center, area, aspect_ratio].
-
-    Args:
-        bbox (array[4]): The bounding box
-
-    Returns:
-        array[4,1]: [x_center, y_center, area, aspect_ratio]
-    """
-
-    width = bbox[2] - bbox[0]
-    height = bbox[3] - bbox[1]
-    x_center = bbox[0] + width/2.
-    y_center = bbox[1] + height/2.
-    return np.array([x_center, y_center, width, height]).reshape((4, 1))
-
-def convert_x_to_bbox(x):
-    """ Takes a bounding box in the centre form [x_center,y_center,area,aspect_ratio] and returns
-    it in the form [x1,y1,x2,y2] where (x1,y1) is the top left and (x2,y2) is the bottom right
-
-    Args:
-        x (array[4]): [x_center,y_center,area,aspect_ratio]
-
-    Returns:
-        np.array: The bounding box
-    """
-    center_x = x[0]
-    center_y = x[1]
-    width    = x[2]
-    height   = x[3]
-
-    return np.array([center_x-width/2., center_y-height/2., center_x+width/2., center_y+height/2.]).reshape((1,4))
-
-
 class trajectory:
     """ Class that uses the SORT algorithm to track objects """
 
@@ -86,26 +51,44 @@ class trajectory:
         self.confidences = [confidence]
         self.initialize_kalman_filter(box)
 
-    def initialize_kalman_filter(self, bbox):
-        """ Initializes a Kalman filter for bounding box predictions. """
+    def initialize_kalman_filter(self, values, order=2, dt=1.):
+        """ Initializes a Kalman filter in either a constant position (order=0),
+            constant velocity (order=1) or constant acceleration (order=2) model.
+            
+        Args:
+            values (array): The values to track.
+            order (int, optional): The order of the motion equation. Defaults to 2.
+            dt (float, optional): Time since last update. Defaults to 1.
+        """
 
-        # Define constant velocity model
-        dim_x = 8 # Tracking x_center, y_center, area, aspect_ratio and their derivatives
-        dim_z = 4 # Predicting x_center, y_center, area and aspect_ratio
+        if order not in [0,1,2]:
+            print(f'Invalid value for order ({order}). Defaulting to 2.')
+            order = 2
+
+        # Extract initialization values
+        dim_z = len(values)
+        dim_x = dim_z * (order+1)
+        initial_values = values.reshape((dim_z,1))
+
+        # Initialize Kalman filter
         self.kf = KalmanFilter(dim_x=dim_x, dim_z=dim_z)
 
-        # Set the detected initial positions
-        self.kf.x[:4] = convert_bbox_to_x(bbox) 
+        # Set the initial values
+        self.kf.x[:dim_z] = initial_values
 
         # Transition Matrix
-        self.kf.F                 = np.eye(dim_x)
-        self.kf.F[0:dim_z,dim_z:] = np.eye(dim_z) # use velocities to predict next position
+        self.kf.F = np.eye(dim_x)
 
         # Measurement Function: maps state to predicted position
         self.kf.H = np.eye(dim_x)[0:dim_z]
 
-        # Give high uncertainty to the initial velocities
-        self.kf.P[dim_z:,dim_z:] = 100 * np.eye(dim_z)
+        if order > 0:
+            self.kf.F[0:dim_z,dim_z:2*dim_z] = dt * np.eye(dim_z) # use velocities to predict next position
+            self.kf.P[dim_z:2*dim_z,dim_z:2*dim_z] = 100 * np.eye(dim_z) # Give high uncertainty to the initial velocities
+
+        if order == 2:
+            self.kf.F[0:dim_z,2*dim_z:3*dim_z] = .5*dt*dt * np.eye(dim_z)
+            self.kf.F[dim_z:2*dim_z,2*dim_z:3*dim_z] = dt * np.eye(dim_z)
 
     def get_prediction(self):
         """ Advances the state vector and returns the predicted bounding box estimate.
@@ -120,7 +103,7 @@ class trajectory:
             self.hit_streak = 0
 
         self.time_since_update += 1
-        self.history.append(convert_x_to_bbox(self.kf.x[0:4]).squeeze(0))
+        self.history.append(self.kf.x[0:4])
         return self.history[-1]
 
     def update(self, bbox, confidence):
@@ -130,8 +113,8 @@ class trajectory:
 
         self.time_since_update = 0
         self.hit_streak += 1
-        self.kf.update(convert_bbox_to_x(bbox))
-        self.confidences.append(confidence)
+        self.kf.update(bbox.reshape((len(bbox),1)))
+        self.confidences.append(confidence) 
 
 class bb_detection:
     """ This class is used like a struct to store values associated with individual detections
