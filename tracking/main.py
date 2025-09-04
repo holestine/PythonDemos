@@ -39,6 +39,8 @@ def drawPred(frame, type, id, conf, box, color=(255, 0, 0)):
         The color of the bounding box
     '''
 
+    box = box.flatten()
+
     left   = int(box[0])
     top    = int(box[1])
     right  = int(box[2])
@@ -112,6 +114,10 @@ def main(config, create_video=True, realtime_display=False):
     # Load the video and process it one frame at a time
     vidcap = cv2.VideoCapture(video_path)
     images_to_process, img = vidcap.read()
+
+    if realtime_display:
+        cv2.namedWindow(video_file)
+        cv2.moveWindow(video_file, 50,50)
 
     if create_video:
         scale = 1
