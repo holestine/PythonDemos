@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 from scipy.optimize import linear_sum_assignment
 from math import sqrt, exp
-from filterpy.kalman import KalmanFilter
+from filterpy.kalman import KalmanFilter, ExtendedKalmanFilter
 
 def prevent_division_by_0(value, epsilon=0.01):
     """ Prevents division by 0 and anything else less than epsilon
@@ -72,23 +72,26 @@ class trajectory:
 
         # Initialize Kalman filter
         self.kf = KalmanFilter(dim_x=dim_x, dim_z=dim_z)
+        #self.kf = ExtendedKalmanFilter(dim_x=dim_x, dim_z=dim_z)
 
         # Set the initial values
         self.kf.x[:dim_z] = initial_values
 
-        # Transition Matrix
+        # Create transition matrix with the first rows containing the position, followed
+        # by the velocities for order > 0 and the accelerations for order > 1.
         self.kf.F = np.eye(dim_x)
 
-        # Measurement Function: maps state to predicted position
-        self.kf.H = np.eye(dim_x)[0:dim_z]
-
         if order > 0:
-            self.kf.F[0:dim_z,dim_z:2*dim_z] = dt * np.eye(dim_z) # use velocities to predict next position
+            self.kf.F[0:dim_z,dim_z:2*dim_z] = dt * np.eye(dim_z)        # use velocities to predict next position
             self.kf.P[dim_z:2*dim_z,dim_z:2*dim_z] = 100 * np.eye(dim_z) # Give high uncertainty to the initial velocities
 
-        if order == 2:
-            self.kf.F[0:dim_z,2*dim_z:3*dim_z] = .5*dt*dt * np.eye(dim_z)
-            self.kf.F[dim_z:2*dim_z,2*dim_z:3*dim_z] = dt * np.eye(dim_z)
+        if order > 2:
+            self.kf.F[0:dim_z,2*dim_z:3*dim_z] = .5*dt*dt * np.eye(dim_z) # use acceleration to predict next position
+            self.kf.F[dim_z:2*dim_z,2*dim_z:3*dim_z] = dt * np.eye(dim_z) # use acceleration to predict next velocity
+            self.kf.P[2*dim_z:3*dim_z,2*dim_z:3*dim_z] = 100 * np.eye(dim_z) # Give high uncertainty to the initial accelerations
+
+        # Since all our positions occupy the first rows we can use a truncated identity matrix for the measurement function
+        self.kf.H = np.eye(dim_x)[0:dim_z]
 
     def get_prediction(self):
         """ Advances the state vector and returns the predicted bounding box estimate.
@@ -176,7 +179,6 @@ class bb_tracker:
 
         # Associate valid detections with the existing trajectories
         self.associate(detections, shape)
-
 
     def box_iou(self, box1, box2):
         """ Determines the intersection over union of two bounding boxes
@@ -284,48 +286,22 @@ class bb_tracker:
                 ids.append(t.id)
                 boxes.append(t.history[-1])
                 confidences.append(t.confidences[-1])
-            # TODO:  Find a way to return high confidence things that have lost tracking for a couple frames
-            #elif len(t.history) > 5:
-            #    ids.append(t.id)
-            #    boxes.append(t.history[-1])
-            #    confidences.append(t.confidences[-1])
-            #    print(t.id)
 
         return (ids, boxes, confidences)
 
-    def print_matches(self):
-        """ Prints all the matches detected in the last update. They can be identified by 
-            trajectories that have multiple bounding boxes and zero missed detections.
-        """
-
-        print("Matched Detections:")
-        for t in self.trajectories:
-            if len(t.history) > 1:
-                if t.time_since_update == 0:
-                    print(t.history[-2])
-                    print(t.history[-1])
-                    print('\n')
-
-    def print_unmatched_trackers(self):
+    def get_unmatched_trackers(self):
         """ Prints all the unmatched trackers from the last update. They can be identified by 
             trajectories that have missed detections greater than zero.
         """
 
-        print("Unmatched Trackers:")
+        ids, boxes, confidences = [], [], []
         for t in self.trajectories:
-            if t.time_since_update > 0:
-                print(t.history[-1])
+            if t.time_since_update > 0 and t.time_since_update < 2 and len(t.history) >= self.min_consecutive_detections:
+                ids.append(t.id)
+                boxes.append(t.history[-1])
+                confidences.append(t.confidences[-1])
 
-    def print_unmatched_detections(self):
-        """ Prints all the unmatched detections from the last update. They can be identified by 
-            trajectories that have only one bounding boxes and zero missed detections.
-        """
-        
-        print("Unmatched Detections:")
-        for t in self.trajectories:
-            if len(t.history) == 1:
-                if t.time_since_update == 0:
-                    print(t.history[-1])
+        return (ids, boxes, confidences)
 
     def cost(self, prediction, detection, shape, linear_thresh = 10000, exp_thresh = 0.5):
         """ Calculate the IoU cost

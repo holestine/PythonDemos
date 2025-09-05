@@ -145,13 +145,18 @@ def main(config, create_video=True, realtime_display=False):
 
             # Process the detections and get all matches
             trackers[cls].process_detections(detections[detections.class_id == cls], img.shape)
-            (ids, boxes, confidences) = trackers[cls].get_matches()
+            (matches_ids, matches_boxes, matches_confidences) = trackers[cls].get_matches()
 
-            if create_video:
+            #(tracker_ids, tracker_boxes, tracker_confidences) = trackers[cls].get_unmatched_trackers()
+
+            if create_video or realtime_display:
                 # Draw matches on the frame and add it to the video
-                for id, box, confidence in zip(ids, boxes, confidences):
+                for id, box, confidence in zip(matches_ids, matches_boxes, matches_confidences):
                     type = yolo_result[0].names[cls]
                     img = drawPred(img, type, id, confidence, box, id_to_color(id))
+                #for id, box, confidence in zip(tracker_ids, tracker_boxes, tracker_confidences):
+                #    type = yolo_result[0].names[cls]
+                #    img = drawPred(img, type, id, confidence, box, id_to_color(id))
 
         if realtime_display:
             # Update the image with the freshly annotated image
@@ -164,9 +169,10 @@ def main(config, create_video=True, realtime_display=False):
         images_to_process, img = vidcap.read()
 
         # For Debug
-        #tracker.print_matches()
-        #tracker.print_unmatched_trackers()
-        #tracker.print_unmatched_detections()
+        #for tracker in list(trackers.values()):
+        #    print(tracker.get_matches())
+        #for tracker in list(trackers.values()):
+        #    print(tracker.get_unmatched_trackers())
 
     if create_video:
         # Save the video
